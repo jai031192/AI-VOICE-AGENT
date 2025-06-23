@@ -10,7 +10,7 @@ import json
 from inference_wrapped import transcribe_from_mic
 
 # Configure Gemini API
-genai.configure(api_key="AIzaSyBMadNj9xk2AxinNTqnzDbC3EIO_j5i8rE")
+genai.configure(api_key="api")
 model = genai.GenerativeModel('gemini-2.5-pro-preview-06-05')
 
 # Define chatbot state
