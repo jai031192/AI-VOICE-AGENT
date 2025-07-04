@@ -1,17 +1,11 @@
-import streamlit as st
-import streamlit.components.v1 as components
+# 📁 chatbot_logic.py
 from langgraph.graph import StateGraph, END
+from typing import TypedDict, List, Dict
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from typing import TypedDict, List, Dict
 import google.generativeai as genai
 import numpy as np
 import json
-from inference_wrapped import transcribe_from_mic
-
-# Configure Gemini API
-genai.configure(api_key="api")
-model = genai.GenerativeModel('gemini-2.5-pro-preview-06-05')
 
 # Define chatbot state
 class ChatbotState(TypedDict):
@@ -23,22 +17,22 @@ class ChatbotState(TypedDict):
     retrieved_context: List[str]
 
 # Load and flatten knowledge base
-with open("C:/AI VOICE AGENT/new/asr-hindi/wheels_eye_conversations.json", "r", encoding="utf-8") as f:
+with open("wheels_eye_conversations.json", "r", encoding="utf-8") as f:
     kb_raw = json.load(f)
+flattened_kb = [msg.get("text") or msg.get("message") for convo in kb_raw["conversations"] for msg in convo["messages"] if msg.get("text") or msg.get("message")]
 
-flattened_kb = []
-for convo in kb_raw.get("conversations", []):
-    for msg in convo.get("messages", []):
-        text = msg.get("text") or msg.get("message")
-        if text:
-            flattened_kb.append(text)
+# Gemini setup
+genai.configure(api_key="AIzaSyBMadNj9xk2AxinNTqnzDbC3EIO_j5i8rE")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Embedding model
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# LangGraph Nodes
+# Nodes
+
 def initial_node(state: ChatbotState) -> ChatbotState:
     if state["is_first_message"]:
-        greeting = "नमस्ते सर, रवि बात कर रहा हूँ WheelsEye कंपनी से, आपकी गाड़ी लोडिंग की है क्या?"
+        greeting = "नमस्ते सर, मैं रवि बोल रहा हूँ WheelsEye से — आपकी गाड़ी लोड वाली है क्या?"
         state["response"] = greeting
         state["history"].append({"role": "rep", "text": greeting})
         state["is_first_message"] = False
@@ -59,15 +53,55 @@ def generate_node(state: ChatbotState) -> ChatbotState:
     context_text = "\n".join(state.get("retrieved_context", []))
     history_text = "\n".join([f'{x["role"]}: {x["text"]}' for x in state["history"]])
     prompt = f"""
-तुम WheelsEye कंपनी के सेल्स प्रतिनिधि हो (नाम रवि)। 
-तुम्हारा काम है ऑपरेटर से जानकारी निकालना:
-- गाड़ी लोडिंग वाली है?
-- कहाँ से लोड लेते हैं?
-- कमीशन लेते हैं?
-- रूट और गाड़ी डिटेल क्या है?
+तुम WheelsEye कंपनी के सेल्स प्रतिनिधि हो (नाम रवि)।
+तुम्हारा काम है फ्लीट ऑपरेटर से ज़रूरी जानकारी लेना और उसे समझाना कि Wheelseye से जुड़ने पर उसे क्या फ़ायदा होगा — वो भी रोज़मर्रा की, साफ़-सुथरी और शालीन हिंदी में।
 
-तुमको केवल प्रतिनिधि की तरह बोलना है। कोई स्पष्टीकरण या संभावित उत्तर मत दो। 
-सिर्फ एक लाइन में संवाद करो।
+ तुम्हें इन बातों की जानकारी लेनी है:
+गाड़ी लोडिंग वाली है?
+
+कहाँ से लोड लेते हैं?
+
+कमीशन देना पड़ता है क्या?
+
+रूट और गाड़ी की डिटेल क्या है?
+
+गाड़ी का नाप क्या है?
+
+कौन-सी टाइप की गाड़ी है?
+
+गाड़ी कितने टन की है?
+
+कितने टायर की गाड़ी है?
+
+कुल कितनी गाड़ियाँ हैं?
+
+ तुम्हें इन फ़ायदों को सही समय पर बातचीत में शामिल करना है:
+(जब बात बन रही हो — और इंसान की तरह समझाओ कि इससे उसे फायदा कैसे होगा)
+
+बिना किसी कमीशन के लोड मिलेगा
+
+पेमेंट 90% एडवांस में होगा
+
+कोई लेबर चार्ज या दाला चार्ज नहीं लगेगा
+
+Wheelseye से जुड़ने पर लोड ढूँढने का झंझट नहीं रहेगा
+
+जितना काम, उतनी कमाई — सब कुछ सीधा और पारदर्शी होगा
+
+ बात करते समय इन बातों का ध्यान रखना है:
+सिर्फ प्रतिनिधि की भूमिका निभाओ — ग्राहक के जवाब की व्याख्या या विश्लेषण मत करो
+
+कोई वैकल्पिक उत्तर या सुझाव मत दो
+
+हर बार सिर्फ एक लाइन में बात पूरी करने की कोशिश करो, लेकिन ज़रूरत पड़े तो शांत, सहज ढंग से बात समझाना भी ठीक है
+
+लहजा दोस्ताना हो, लेकिन प्रोफेशनल
+
+जब ऑपरेटर कोई जानकारी दे, तो उसमें से 1-2 पॉइंट दोहराकर कन्फर्म ज़रूर करो (जैसे: "तो मतलब आपकी गाड़ियाँ 14 टन की हैं और रूट दिल्ली से हरिद्वार है?")
+
+जहां ज़रूरत हो, फ़ायदे छोटे-छोटे वाक्यों में साफ़ तौर पर बताओ — कोई लंबा भाषण मत दो
+
+
 
 अब तक की बातचीत:
 {history_text}
@@ -83,7 +117,7 @@ Knowledge Base:
     state["history"].append({"role": "rep", "text": reply})
     return state
 
-# LangGraph Setup
+# Graph
 chat_graph = StateGraph(ChatbotState)
 chat_graph.add_node("initial", initial_node)
 chat_graph.add_node("retrieve", retrieve_node)
@@ -93,90 +127,3 @@ chat_graph.add_edge("initial", "retrieve")
 chat_graph.add_edge("retrieve", "generate")
 chat_graph.add_edge("generate", END)
 compiled_graph = chat_graph.compile()
-
-# Page Config
-st.set_page_config(page_title="WheelsEye Chatbot", page_icon="🚚", layout="centered")
-
-# CSS for styling the chat
-st.markdown("""
-    <style>
-    .chat-box {
-        max-height: 450px;
-        overflow-y: auto;
-        padding: 10px;
-        background-color: #000000;
-        border: 1px solid #ccc;
-        border-radius: 10px;
-    }
-    .user-msg, .rep-msg {
-        padding: 10px 15px;
-        margin: 5px 0;
-        max-width: 80%;
-        border-radius: 20px;
-        display: inline-block;
-    }
-    .user-msg {
-        background-color: #000000;
-        text-align: right;
-        float: right;
-    }
-    .rep-msg {
-        background-color: #000000;
-        text-align: left;
-        float: left;
-    }
-    .clearfix {
-        clear: both;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("🚚 WheelsEye Chatbot")
-
-# Initialize session state
-if "chat_state" not in st.session_state:
-    st.session_state.chat_state = {
-        "user_input": "",
-        "history": [],
-        "response": "",
-        "knowledge_base": flattened_kb,
-        "is_first_message": True,
-        "retrieved_context": []
-    }
-    st.session_state.chat_state = initial_node(st.session_state.chat_state)  # Only show greeting
-
-# Chat box display
-st.markdown('<div class="chat-box">', unsafe_allow_html=True)
-for msg in st.session_state.chat_state["history"]:
-    msg_class = "rep-msg" if msg["role"] == "rep" else "user-msg"
-    st.markdown(f'<div class="{msg_class}">{msg["text"]}</div><div class="clearfix"></div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Input area
-col1, col2 = st.columns([4, 1])
-with col1:
-    user_input = st.text_input("Type your message...", key="user_input_text", label_visibility="collapsed", placeholder="Type your message and hit Send...")
-with col2:
-    if st.button("Send") and user_input.strip():
-        st.session_state.chat_state["user_input"] = user_input.strip()
-        st.session_state.chat_state["history"].append({"role": "operator", "text": user_input})
-        st.session_state.chat_state = compiled_graph.invoke(st.session_state.chat_state)
-        st.experimental_rerun()
-
-# 🎙️ Mic input
-if st.button("🎙️ Speak (Hindi)"):
-    with st.spinner("Listening..."):
-        try:
-            mic_text = transcribe_from_mic()
-            if mic_text:
-                st.session_state.chat_state["user_input"] = mic_text.strip()
-                st.session_state.chat_state["history"].append({"role": "operator", "text": mic_text.strip()})
-                st.session_state.chat_state = compiled_graph.invoke(st.session_state.chat_state)
-                st.experimental_rerun()
-        except Exception as e:
-            st.error(f"Voice input failed: {e}")
-
-# Reset chat
-if st.button("🔁 Reset Chat"):
-    st.session_state.clear()
-    st.experimental_rerun()
